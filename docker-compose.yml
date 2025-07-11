@@ -66,7 +66,7 @@ services:
       - default
     env_file:
       - .env
-    restart: unless-stopped
+    restart: always
     labels:
       # Enable Traefik for this service
       traefik.enable: true
