@@ -1,8 +1,8 @@
 # Stage 1: Base image with apt packages
-FROM ghcr.io/linuxserver/baseimage-kasmvnc:ubuntujammy AS base
+FROM ghcr.io/linuxserver/baseimage-kasmvnc:debianbullseye-8446af38-ls104 AS base
 
 ENV TITLE=MetaTrader
-ENV WINEARCH=win64
+ENV WINEARCH=win32
 ENV WINEPREFIX="/config/.wine"
 ENV DISPLAY=:0
 
@@ -36,20 +36,39 @@ RUN dpkg --add-architecture i386 \
 # Install WineHQ stable package and dependencies
 RUN apt-get install --install-recommends -y \
     winehq-stable \
+    winetricks \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Ensure abc owns /config, /config/.wine, and /config/.cache after package installs
+RUN mkdir -p /config/.wine /config/.cache && \
+    chown -R abc:abc /config /config/.wine /config/.cache
+
+# Ensure runtime directory exists for abc (needed for some X apps)
+RUN mkdir -p /tmp/runtime-abc && \
+    chown abc:abc /tmp/runtime-abc && \
+    chmod 700 /tmp/runtime-abc
 
 # Stage 2: Final image
 FROM base
 
 # Copy the scripts directory and convert start.sh to Unix format
+COPY app /appcheck
 COPY scripts /scripts
 RUN dos2unix /scripts/*.sh && \
     chmod +x /scripts/*.sh
 
-COPY /root /
+COPY root/defaults/autostart /etc/xdg/openbox/autostart
+COPY root/defaults/menu.xml /etc/xdg/openbox/menu.xml
 RUN touch /var/log/mt5_setup.log && \
     chown abc:abc /var/log/mt5_setup.log && \
     chmod 644 /var/log/mt5_setup.log
 
+USER abc
+
+# Fast-fail on bad permissions for /config/.wine (fail container if not writable)
+RUN ls -ld /config /config/.wine || true
+ENTRYPOINT ["/bin/bash", "-c", "if [ ! -w /config/.wine ]; then echo 'ERROR: /config/.wine is not writable by user abc'; ls -ld /config /config/.wine; exit 1; fi; exec /scripts/01-start.sh"]
+
+EXPOSE 3000 5000 5001 8001 18812
 VOLUME /config

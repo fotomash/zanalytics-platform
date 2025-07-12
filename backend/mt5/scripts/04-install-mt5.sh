@@ -12,10 +12,23 @@ else
 
     # Set Windows 10 mode in Wine and download and install MT5
     $wine_executable reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d "win10" /f
+    if [ $? -ne 0 ]; then
+        log_message "ERROR" "Failed to set Wine to Windows 10 mode"
+        exit 1
+    fi
     log_message "INFO" "Downloading MT5 installer..."
     wget -O /tmp/mt5setup.exe $mt5setup_url > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        log_message "ERROR" "Failed to download MT5 installer"
+        exit 1
+    fi
     log_message "INFO" "Installing MetaTrader 5..."
     $wine_executable /tmp/mt5setup.exe /auto
+    if [ $? -ne 0 ]; then
+        log_message "ERROR" "Failed to install MT5"
+        rm -f /tmp/mt5setup.exe
+        exit 1
+    fi
     rm -f /tmp/mt5setup.exe
 fi
 

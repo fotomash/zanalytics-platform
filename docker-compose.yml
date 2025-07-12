@@ -73,9 +73,13 @@ services:
     build:
       context: backend/mt5
       dockerfile: Dockerfile
+      args:
+        INSTALL_WINETRICKS: "true"
     container_name: mt5
     volumes:
       - ./config:/config
+    environment:
+      - XDG_RUNTIME_DIR=/tmp/runtime-abc
     networks:
       - traefik-public
       - default
