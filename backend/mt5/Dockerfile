@@ -1,74 +1,78 @@
-# Stage 1: Base image with apt packages
-FROM ghcr.io/linuxserver/baseimage-kasmvnc:debianbullseye-8446af38-ls104 AS base
+FROM ghcr.io/linuxserver/baseimage-kasmvnc:debianbullseye
 
+# Set environment variables
 ENV TITLE=MetaTrader
-ENV WINEARCH=win32
+ENV WINEARCH=win64
 ENV WINEPREFIX="/config/.wine"
-ENV DISPLAY=:0
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
 
-# Ensure the directory exists with correct permissions
-RUN mkdir -p /config/.wine && \
-    chown -R abc:abc /config/.wine && \
-    chmod -R 755 /config/.wine
+# Enable 32-bit architecture for Wine
+RUN dpkg --add-architecture i386
 
-# Update package lists and upgrade packages
-RUN apt-get update && apt-get upgrade -y
+# Install dependencies
+RUN apt-get update && apt-get install -y     software-properties-common     wget     curl     gnupg2     dos2unix     python3-pip     python3-pyxdg     netcat     xvfb     locales     && locale-gen en_US.UTF-8
 
-# Install required packages
-RUN apt-get install -y \
-    dos2unix \
-    python3-pip \
-    wget \
-    python3-pyxdg \
-    netcat \
-    && pip3 install --upgrade pip
+# Add Wine repository using the new method (avoiding deprecated apt-key)
+RUN wget -nc -O /usr/share/keyrings/winehq-archive.key https://dl.winehq.org/wine-builds/winehq.key &&     echo "deb [signed-by=/usr/share/keyrings/winehq-archive.key] https://dl.winehq.org/wine-builds/debian/ bullseye main" > /etc/apt/sources.list.d/winehq.list &&     apt-get update &&     apt-get install -y --install-recommends winehq-stable winetricks &&     apt-get clean &&     rm -rf /var/lib/apt/lists/*
 
-# Add WineHQ repository key and APT source
-RUN wget -q https://dl.winehq.org/wine-builds/winehq.key > /dev/null 2>&1\
-    && apt-key add winehq.key \
-    && add-apt-repository 'deb https://dl.winehq.org/wine-builds/debian/ bullseye main' \
-    && rm winehq.key
+# Install Python packages
+RUN pip3 install --upgrade pip
 
-# Add i386 architecture and update package lists
-RUN dpkg --add-architecture i386 \
-    && apt-get update
+# Create directories with proper permissions (do this ONCE)
+RUN mkdir -p /config /config/.wine /config/.cache/winetricks/vcrun2015 /scripts &&     chown -R abc:abc /config &&     chmod -R 755 /config
 
-# Install WineHQ stable package and dependencies
-RUN apt-get install --install-recommends -y \
-    winehq-stable \
-    winetricks \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Ensure abc owns /config, /config/.wine, and /config/.cache after package installs
-RUN mkdir -p /config/.wine /config/.cache && \
-    chown -R abc:abc /config /config/.wine /config/.cache
-
-# Ensure runtime directory exists for abc (needed for some X apps)
-RUN mkdir -p /tmp/runtime-abc && \
-    chown abc:abc /tmp/runtime-abc && \
-    chmod 700 /tmp/runtime-abc
-
-# Stage 2: Final image
-FROM base
-
-# Copy the scripts directory and convert start.sh to Unix format
-COPY app /appcheck
+# Copy scripts and fix line endings
 COPY scripts /scripts
-RUN dos2unix /scripts/*.sh && \
-    chmod +x /scripts/*.sh
+RUN dos2unix /scripts/*.sh && chmod +x /scripts/*.sh
 
-COPY root/defaults/autostart /etc/xdg/openbox/autostart
-COPY root/defaults/menu.xml /etc/xdg/openbox/menu.xml
-RUN touch /var/log/mt5_setup.log && \
-    chown abc:abc /var/log/mt5_setup.log && \
-    chmod 644 /var/log/mt5_setup.log
+# Copy root filesystem
+COPY /root /
 
-USER abc
+# Pre-download VC++ redistributable (but don't install at build time)
+RUN wget -q -O /tmp/vc_redist.x86.exe https://aka.ms/vs/17/release/vc_redist.x86.exe &&     mkdir -p /config/.cache/winetricks/vcrun2015 &&     mv /tmp/vc_redist.x86.exe /config/.cache/winetricks/vcrun2015/ &&     chown -R abc:abc /config/.cache
 
-# Fast-fail on bad permissions for /config/.wine (fail container if not writable)
-RUN ls -ld /config /config/.wine || true
-ENTRYPOINT ["/bin/bash", "-c", "if [ ! -w /config/.wine ]; then echo 'ERROR: /config/.wine is not writable by user abc'; ls -ld /config /config/.wine; exit 1; fi; exec /scripts/01-start.sh"]
+# Create custom init script
+RUN mkdir -p /custom-cont-init.d &&     cat > /custom-cont-init.d/99-mt5-init.sh << 'EOF'
+#!/bin/bash
+set -e
 
-EXPOSE 3000 5000 5001 8001 18812
+echo "Starting MT5 initialization..."
+
+# Start Xvfb for Wine
+Xvfb :99 -screen 0 1024x768x16 &
+sleep 2
+
+# Export environment
+export DISPLAY=:99
+export WINEARCH=win64
+export WINEPREFIX=/config/.wine
+export LC_ALL=C.UTF-8
+export LANG=C.UTF-8
+export WINEDLLOVERRIDES="mscoree,mshtml=d"
+
+# Ensure directories exist with correct permissions
+mkdir -p /config/.wine /config/.cache
+chown -R abc:abc /config
+
+# Initialize Wine prefix as abc user if needed
+if [ ! -f "$WINEPREFIX/system.reg" ]; then
+    echo "Initializing Wine prefix..."
+    su - abc -c "export DISPLAY=:99 && export WINEARCH=win64 && export WINEPREFIX=/config/.wine && export WINEDLLOVERRIDES='mscoree,mshtml=d' && wineboot --init"
+    sleep 5
+fi
+
+# Start MT5 setup as abc user
+echo "Starting MT5 setup script..."
+su - abc -c "export DISPLAY=:99 && export WINEARCH=win64 && export WINEPREFIX=/config/.wine && export LC_ALL=C.UTF-8 && export LANG=C.UTF-8 && /scripts/01-start.sh" &
+
+echo "MT5 initialization complete"
+EOF
+
+RUN chmod +x /custom-cont-init.d/99-mt5-init.sh
+
+# Set the volume
 VOLUME /config
+
+# The entrypoint is inherited from the base image

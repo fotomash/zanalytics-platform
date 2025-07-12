@@ -1,3 +1,9 @@
+##############################################################################
+# Before running docker-compose, export your macOS user and group id:
+#   export LOCAL_UID=$(id -u)
+#   export LOCAL_GID=$(id -g)
+##############################################################################
+
 x-logging: &default-logging
   driver: "json-file"
   options:
@@ -18,7 +24,6 @@ services:
       - 80:80 # HTTP port
       - 443:443 # HTTPS port
     restart: always
-    labels:
       # Traefik configuration
       <<: *default-labels
       traefik.enable: true
@@ -76,8 +81,10 @@ services:
       args:
         INSTALL_WINETRICKS: "true"
     container_name: mt5
+    # user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     volumes:
-      - ./config:/config
+      # Use a bind‑mount during development so /config is a real folder on the host
+      - ./mt5-config:/config
     environment:
       - XDG_RUNTIME_DIR=/tmp/runtime-abc
     networks:

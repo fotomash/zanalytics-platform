@@ -1,0 +1,76 @@
+#!/bin/bash
+
+# Set environment
+export DISPLAY=:99
+export WINEARCH=win64
+export WINEPREFIX="/config/.wine"
+export LC_ALL=C.UTF-8
+export LANG=C.UTF-8
+export WINEDLLOVERRIDES="mscoree,mshtml=d"
+
+# Source common functions
+source /scripts/02-common.sh
+
+log_message "INFO" "Starting MT5 setup..."
+
+# Ensure Wine is initialized
+if [ ! -f "$WINEPREFIX/system.reg" ]; then
+    log_message "INFO" "Wine prefix not found, initializing..."
+    wineboot --init
+    sleep 5
+fi
+
+# Test Wine
+log_message "INFO" "Testing Wine installation..."
+wine --version || {
+    log_message "ERROR" "Wine test failed"
+    exit 1
+}
+
+# Install VC++ runtime if needed (using winetricks at runtime)
+if ! wine winepath -u 'C:\windows\system32\ucrtbase.dll' >/dev/null 2>&1; then
+    log_message "INFO" "Installing Visual C++ runtime..."
+    # Use the pre-downloaded file if available
+    if [ -f "/config/.cache/winetricks/vcrun2015/vc_redist.x86.exe" ]; then
+        log_message "INFO" "Using cached VC++ installer..."
+    fi
+    winetricks -q vcrun2015 || log_message "WARNING" "vcrun2015 installation had issues"
+fi
+
+# Create MT5 directory
+mkdir -p "$WINEPREFIX/drive_c/Program Files/MetaTrader 5"
+
+# Download and install MT5
+if [ ! -f "$WINEPREFIX/drive_c/Program Files/MetaTrader 5/terminal64.exe" ]; then
+    log_message "INFO" "Downloading MT5 installer..."
+    wget -O /tmp/mt5setup.exe https://download.mql5.com/cdn/web/metaquotes.software.corp/mt5/mt5setup.exe || {
+        log_message "ERROR" "Failed to download MT5"
+        exit 1
+    }
+
+    log_message "INFO" "Installing MT5 (this may take several minutes)..."
+    wine /tmp/mt5setup.exe /auto
+
+    # Wait for installation to complete
+    sleep 30
+
+    # Clean up
+    rm -f /tmp/mt5setup.exe
+fi
+
+# Check if MT5 is installed
+if [ -f "$WINEPREFIX/drive_c/Program Files/MetaTrader 5/terminal64.exe" ]; then
+    log_message "INFO" "MT5 installed successfully!"
+    log_message "INFO" "Starting MetaTrader 5..."
+    cd "$WINEPREFIX/drive_c/Program Files/MetaTrader 5"
+    wine terminal64.exe /portable &
+else
+    log_message "ERROR" "MT5 installation failed"
+    log_message "INFO" "Checking Wine environment..."
+    wine cmd /c echo "Wine is working"
+    ls -la "$WINEPREFIX/drive_c/Program Files/"
+fi
+
+# Keep script running
+log_message "INFO" "MT5 setup script running..."
+tail -f /dev/null
