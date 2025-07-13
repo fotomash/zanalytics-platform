@@ -93,3 +93,4 @@ logs
 # Database
 *.sqlite3
 /config
+/mt5-config
