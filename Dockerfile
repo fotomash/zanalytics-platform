@@ -13,7 +13,7 @@ RUN mkdir -p /config/.wine /config/.cache &&     chown -R abc:abc /config &&    
 RUN apt-get update && apt-get upgrade -y
 
 # Install required packages
-RUN apt-get install -y     dos2unix     python3-pip     wget     python3-pyxdg     netcat     xvfb     && pip3 install --upgrade pip
+RUN apt-get install -y     dos2unix     python3-pip     wget     python3-pyxdg     netcat     && pip3 install --upgrade pip
 
 # Add WineHQ repository key and APT source
 RUN wget -q https://dl.winehq.org/wine-builds/winehq.key > /dev/null 2>&1    && apt-key add winehq.key     && add-apt-repository 'deb https://dl.winehq.org/wine-builds/debian/ bullseye main'     && rm winehq.key
@@ -39,29 +39,6 @@ RUN touch /var/log/mt5_setup.log &&     chown abc:abc /var/log/mt5_setup.log && 
 
 # Pre-download VC++ redistributable
 RUN mkdir -p /config/.cache/winetricks/vcrun2015 &&     wget -q -O /config/.cache/winetricks/vcrun2015/vc_redist.x86.exe     https://aka.ms/vs/17/release/vc_redist.x86.exe &&     chown -R abc:abc /config/.cache
-
-# Create custom init script
-RUN mkdir -p /custom-cont-init.d &&     cat > /custom-cont-init.d/99-mt5-init.sh << 'EOF'
-#!/bin/bash
-set -e
-
-echo "Starting MT5 initialization..."
-
-# Ensure Wine directory exists
-if [ ! -d "/config/.wine" ]; then
-    echo "Creating Wine directory..."
-    mkdir -p /config/.wine /config/.cache
-    chown -R abc:abc /config
-    chmod -R 755 /config
-fi
-
-# Start the MT5 setup script as abc user
-su - abc -c "/scripts/01-start.sh" &
-
-echo "MT5 initialization started"
-EOF
-
-RUN chmod +x /custom-cont-init.d/99-mt5-init.sh
 
 EXPOSE 3000 5000 5001 8001 18812
 VOLUME /config
