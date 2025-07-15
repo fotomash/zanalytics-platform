@@ -42,3 +42,19 @@ RUN mkdir -p /config/.cache/winetricks/vcrun2015 &&     wget -q -O /config/.cach
 
 EXPOSE 3000 5000 5001 8001 18812
 VOLUME /config
+
+# Install Flask API requirements
+COPY requirements.txt /app/requirements.txt
+RUN pip3 install -r /app/requirements.txt
+
+# Copy Flask application source
+COPY app /app
+
+# Make sure config is owned by abc
+RUN chown -R abc:abc /app /config
+
+# Switch to abc user
+USER abc
+
+# Initialize Wine + run Flask inside Wine
+CMD ["/scripts/07_start_flask.sh"]

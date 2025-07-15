@@ -4,38 +4,46 @@ source /scripts/02-common.sh
 
 log_message "RUNNING" "04-install-mt5.sh"
 
-# Check if MetaTrader 5 is installed
+# Check if MetaTrader 5 is already installed
 if [ -e "$mt5file" ]; then
-    log_message "INFO" "File $mt5file already exists."
+    log_message "INFO" "MetaTrader 5 already installed at: $mt5file"
 else
-    log_message "INFO" "File $mt5file is not installed. Installing..."
+    log_message "INFO" "MetaTrader 5 not found. Proceeding with installation..."
 
-    # Set Windows 10 mode in Wine and download and install MT5
-    $wine_executable reg add "HKEY_CURRENT_USER\\Software\\Wine" /v Version /t REG_SZ /d "win10" /f
+    # Set Wine to Windows 10 mode
+    $wine_executable reg add "HKCU\\Software\\Wine" /v Version /t REG_SZ /d "win10" /f
     if [ $? -ne 0 ]; then
         log_message "ERROR" "Failed to set Wine to Windows 10 mode"
         exit 1
     fi
-    log_message "INFO" "Downloading MT5 installer..."
-    wget -O /tmp/mt5setup.exe $mt5setup_url > /dev/null 2>&1
+
+    # Download MT5 installer
+    log_message "INFO" "Downloading MetaTrader 5 installer from $mt5setup_url"
+    wget -q -O /tmp/mt5setup.exe "$mt5setup_url"
     if [ $? -ne 0 ]; then
         log_message "ERROR" "Failed to download MT5 installer"
         exit 1
     fi
+
+    # Run MT5 installer
     log_message "INFO" "Installing MetaTrader 5..."
     $wine_executable /tmp/mt5setup.exe /auto
-    if [ $? -ne 0 ]; then
-        log_message "ERROR" "Failed to install MT5"
-        rm -f /tmp/mt5setup.exe
+    install_status=$?
+
+    rm -f /tmp/mt5setup.exe
+
+    if [ $install_status -ne 0 ]; then
+        log_message "ERROR" "MT5 installation failed with exit code $install_status"
         exit 1
     fi
-    rm -f /tmp/mt5setup.exe
 fi
 
-# Recheck if MetaTrader 5 is installed
+# Verify installation
 if [ -e "$mt5file" ]; then
-    log_message "INFO" "File $mt5file is installed. Running MT5..."
+    log_message "SUCCESS" "MetaTrader 5 successfully installed at: $mt5file"
+    log_message "INFO" "Launching MetaTrader 5..."
     $wine_executable "$mt5file" &
 else
-    log_message "ERROR" "File $mt5file is not installed. MT5 cannot be run."
+    log_message "ERROR" "MT5 file not found after install. Something went wrong."
+    exit 1
 fi

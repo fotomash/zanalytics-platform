@@ -7,41 +7,69 @@ ENV WINEPREFIX="/config/.wine"
 ENV DISPLAY=:0
 
 # Ensure the directory exists with correct permissions
-RUN mkdir -p /config/.wine /config/.cache &&     chown -R abc:abc /config &&     chmod -R 755 /config
+RUN mkdir -p /config/.wine /config/.cache && \
+    chown -R abc:abc /config && \
+    chmod -R 755 /config
 
 # Update package lists and upgrade packages
 RUN apt-get update && apt-get upgrade -y
 
 # Install required packages
-RUN apt-get install -y     dos2unix     python3-pip     wget     python3-pyxdg     netcat     xvfb     && pip3 install --upgrade pip
+RUN apt-get install -y \
+    dos2unix \
+    python3-pip \
+    wget \
+    python3-pyxdg \
+    netcat \
+    xvfb && \
+    pip3 install --upgrade pip
 
 # Add WineHQ repository key and APT source
-RUN wget -q https://dl.winehq.org/wine-builds/winehq.key > /dev/null 2>&1    && apt-key add winehq.key     && add-apt-repository 'deb https://dl.winehq.org/wine-builds/debian/ bullseye main'     && rm winehq.key
+RUN wget -q https://dl.winehq.org/wine-builds/winehq.key > /dev/null 2>&1 && \
+    apt-key add winehq.key && \
+    add-apt-repository 'deb https://dl.winehq.org/wine-builds/debian/ bullseye main' && \
+    rm winehq.key
 
 # Add i386 architecture and update package lists
-RUN dpkg --add-architecture i386     && apt-get update
+RUN dpkg --add-architecture i386 && apt-get update
 
 # Install WineHQ stable package and dependencies
-RUN apt-get install --install-recommends -y     winehq-stable     winetricks     && apt-get clean     && rm -rf /var/lib/apt/lists/*
+RUN apt-get install --install-recommends -y \
+    winehq-stable \
+    winetricks && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Stage 2: Final image
 FROM base
 
+# Set working directory
+WORKDIR /app
+
 # Copy the scripts directory and convert to Unix format
 COPY scripts /scripts
-RUN dos2unix /scripts/*.sh &&     chmod +x /scripts/*.sh
+RUN dos2unix /scripts/*.sh && chmod +x /scripts/*.sh
 
 # Copy root filesystem
 COPY /root /
 
+# Ensure abc user has proper shell for su
+RUN chsh -s /bin/bash abc
+
 # Create log file with proper permissions
-RUN touch /var/log/mt5_setup.log &&     chown abc:abc /var/log/mt5_setup.log &&     chmod 644 /var/log/mt5_setup.log
+RUN touch /var/log/mt5_setup.log && \
+    chown abc:abc /var/log/mt5_setup.log && \
+    chmod 644 /var/log/mt5_setup.log
 
 # Pre-download VC++ redistributable
-RUN mkdir -p /config/.cache/winetricks/vcrun2015 &&     wget -q -O /config/.cache/winetricks/vcrun2015/vc_redist.x86.exe     https://aka.ms/vs/17/release/vc_redist.x86.exe &&     chown -R abc:abc /config/.cache
+RUN mkdir -p /config/.cache/winetricks/vcrun2015 && \
+    wget -q -O /config/.cache/winetricks/vcrun2015/vc_redist.x86.exe \
+    https://aka.ms/vs/17/release/vc_redist.x86.exe && \
+    chown -R abc:abc /config/.cache
 
 # Create custom init script
-RUN mkdir -p /custom-cont-init.d &&     cat > /custom-cont-init.d/99-mt5-init.sh << 'EOF'
+RUN mkdir -p /custom-cont-init.d && \
+    cat > /custom-cont-init.d/99-mt5-init.sh << 'EOF'
 #!/bin/bash
 set -e
 
@@ -63,5 +91,11 @@ EOF
 
 RUN chmod +x /custom-cont-init.d/99-mt5-init.sh
 
-EXPOSE 3000 5000 5001 8001 18812
+# Declare only necessary ports
+EXPOSE 3000 5001
+
+# Persistent volume for configuration and wine
 VOLUME /config
+
+# Optional: Define a default CMD (can be overridden by baseimage init)
+CMD ["su", "-", "abc", "-c", "/scripts/07-start-wine-flask.sh"]
