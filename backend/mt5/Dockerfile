@@ -25,7 +25,7 @@ RUN apt-get install -y \
     pip3 install --upgrade pip
 
 # Add WineHQ repository key and APT source
-RUN wget -q https://dl.winehq.org/wine-builds/winehq.key > /dev/null 2>&1 && \
+RUN wget -q https://dl.winehq.org/wine-builds/winehq.key && \
     apt-key add winehq.key && \
     add-apt-repository 'deb https://dl.winehq.org/wine-builds/debian/ bullseye main' && \
     rm winehq.key
@@ -43,7 +43,6 @@ RUN apt-get install --install-recommends -y \
 # Stage 2: Final image
 FROM base
 
-# Set working directory
 WORKDIR /app
 
 # Copy the scripts directory and convert to Unix format
@@ -56,18 +55,15 @@ COPY /root /
 # Ensure abc user has proper shell for su
 RUN chsh -s /bin/bash abc
 
-# Create log file with proper permissions
-RUN touch /var/log/mt5_setup.log && \
-    chown abc:abc /var/log/mt5_setup.log && \
-    chmod 644 /var/log/mt5_setup.log
+# ⚠️ Removed /var/log/mt5_setup.log block to avoid permission issues
 
-# Pre-download VC++ redistributable
+# Pre-download VC++ redistributable (optional but useful for speed)
 RUN mkdir -p /config/.cache/winetricks/vcrun2015 && \
     wget -q -O /config/.cache/winetricks/vcrun2015/vc_redist.x86.exe \
     https://aka.ms/vs/17/release/vc_redist.x86.exe && \
     chown -R abc:abc /config/.cache
 
-# Create custom init script
+# Custom init script to bootstrap MT5
 RUN mkdir -p /custom-cont-init.d && \
     cat > /custom-cont-init.d/99-mt5-init.sh << 'EOF'
 #!/bin/bash
@@ -91,11 +87,7 @@ EOF
 
 RUN chmod +x /custom-cont-init.d/99-mt5-init.sh
 
-# Declare only necessary ports
 EXPOSE 3000 5001
-
-# Persistent volume for configuration and wine
 VOLUME /config
 
-# Optional: Define a default CMD (can be overridden by baseimage init)
 CMD ["su", "-", "abc", "-c", "/scripts/07-start-wine-flask.sh"]

@@ -10,11 +10,16 @@ wine_executable="wine"
 metatrader_version="5.0.36"
 mt5server_port=18812
 
+# Setup log path
+log_dir="/config/logs"
+log_file="${log_dir}/mt5_setup.log"
+mkdir -p "$log_dir"
+
 # Function to show log messages
 log_message() {
     local level=$1
     local message=$2
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - [$level] $message" | tee -a /var/log/mt5_setup.log
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - [$level] $message" | tee -a "$log_file"
 }
 
 # Function to check if a Wine Python package is installed
